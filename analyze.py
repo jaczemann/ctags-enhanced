@@ -3,6 +3,18 @@ import ast
 import os
 from collections import defaultdict
 
+
+
+
+#TODO: Types diagram
+#TODO: ADD TYPE option
+#TODO: DISPLAY TYPE option
+#TODO: Interface diagram
+#TODO: ADD INTERFACE option
+#TODO: DISPLAY INTERFACE option
+
+
+
 true = True
 
 def createPathNavigation():
@@ -14,7 +26,13 @@ def createPathNavigation():
 
 navig = createPathNavigation()
 
+def createListOfModulesInPackageTree():
+	tree_of_modules=[]
+	for root,dirs,files in os.walk(os.getcwd()):
+		tree_of_modules.append([root, [file for file in files if '.c' in file]])
+	return tree_of_modules
 
+tree_of_modules = createListOfModulesInPackageTree()
 
 with open("deps", "r") as deps_file:
 	dps = deps_file.readlines()
@@ -98,21 +116,26 @@ file_struct = { "variables":[], "functions":[], "types": [], "enums": [] }
 
 
 source_files = list(set([tag['path'] for tag in tags_proc]))
+if "blueprint" in source_files: source_files.remove("blueprint")
+if "tags" in source_files: source_files.remove("tags")
+if "deps" in source_files: source_files.remove("deps")
+
+tags_group['files']={key: file_struct for key in source_files}
 
 for src in source_files:
 	#tags_group['files'].append(dict({src: file_struct})) #FIXME
-	tags_group['files'].append({src: file_struct})
+	#tags_group['files'].append({src: file_struct})
 
 	for tag in tags_proc:
 		if tag['path'] == src:
 			if tag['kind'] == 'variable':
-				tags_group['files'][source_files.index(src)][src]['variables'].append(tag)
+				tags_group['files'][src]['variables'].append(tag)
 			if tag['kind'] == 'function':
-				tags_group['files'][source_files.index(src)][src]['functions'].append(tag)
+				tags_group['files'][src]['functions'].append(tag)
 			if tag['kind'] == 'typedef':
-				tags_group['files'][source_files.index(src)][src]['types'].append(tag)
+				tags_group['files'][src]['types'].append(tag)
 			if tag['kind'] == 'enum':
-				tags_group['files'][source_files.index(src)][src]['enums'].append(tag)
+				tags_group['files'][src]['enums'].append(tag)
 
 print("\n\n\n")
 print(tags_group)
@@ -125,15 +148,47 @@ def createBlueprint():
 
 	bp_data = []
 
-	bp_data.append("NEW\tROOT\t" + "RootName" + "\n")
-	for path, create in navig:
-		bp_data.append("NEW\tPACKAGE\t" + path + "\t" + ';'.join(create) + "\n")
+	bp_data.append("NEW\tPACKAGE\t" + navig[0][0].split(r'/')[-1] + ";0\n")
+	#for path, create in navig:
+		#bp_data.append("NEW\tPACKAGE\t" + path + "\t" + ';'.join(create) + "\n")
 
-	bp_data.append("NEW\tDIAGRAM\tDiagramName\n")
-	bp_data.append("GOTO\tDIAGRAM\tDiagramName\n")
+	i=0
+	d=0
+	for pckg, to_create in navig:
+		bp_data.append("GOTO\tPACKAGE\t" + pckg.split(r'/')[-1] + ';' + str(i) + '\n')
+		if pckg.split(r'/')[-1] == "core":
+			bp_data.append("NEW\tDIAGRAM\t" + navig[0][0].split(r'/')[-1] + ' MCD' + ';' + str(d) + '\n')
+			bp_data.append("GOTO\tDIAGRAM\t" + navig[0][0].split(r'/')[-1] + ' MCD' + ';' + str(d) + '\n')
+			bp_data.append("NEW\tBSW\t" + navig[0][0].split(r'/')[-1] + '\n')
 
-	for file in source_files:
-		bp_data.append("NEW\tMODULE\t" + file.replace('.c', '') + "\n")
+			for pckg, modules in tree_of_modules:
+				if navig[0][0].split(r'/')[-1] in pckg:
+					for module in modules:
+						bp_data.append("NEW\tMODULE\t" + module + '\n')
+						src=[file for file in source_files if module in file][0]
+						for variable in tags_group['files'][src]['variables']:
+							bp_data.append("NEW\tATTRIBUTE\t" + variable['name'] + '\t' + variable['typeref'] + '\n')
+						for function in tags_group['files'][src]['functions']:
+							bp_data.append("NEW\tOPERATION\t" + function['name'] + '\t' + function['typeref'] + '\n')
+
+							for param in function['pattern']:
+								if(param == ""):
+									continue
+								bp_data.append("NEW\tARGUMENT\t" + param['arg_name'] + '\t' + param['arg_typeref'] + '\n')
+								print(str(type(param))+str(param))
+
+
+						bp_data.append("NEW\tREALISATION\n")
+						bp_data.append("DISPLAY\tMODULE\n")
+			d+=1
+		i_backup = i
+		for create in to_create:
+			i+=1
+			bp_data.append("NEW\tPACKAGE\t" + create + ';' + str(i) + '\n')
+		i = i_backup
+		i += 1
+
+
 
 
 	bp_data.append("END\n")
